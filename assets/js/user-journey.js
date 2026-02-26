@@ -84,6 +84,12 @@ const GfUserJourney = ( function( document, window ) {
 				}
 			}
 
+			// Auto-detect Google Ads clicks when no UTM params are present.
+			if ( Object.keys( utm ).length === 0 && params.get( 'gad_source' ) === '1' ) {
+				utm.utm_source = 'google';
+				utm.utm_medium = 'cpc';
+			}
+
 			if ( Object.keys( utm ).length === 0 ) {
 				return;
 			}
