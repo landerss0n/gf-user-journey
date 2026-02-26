@@ -475,7 +475,7 @@ final class GF_User_Journey {
 
 		// Header.
 		$html .= '<tr>';
-		$html .= '<td colspan="3" style="' . $cell . 'font-weight:bold;font-size:14px;background:#f7f7f7;">User Journey</td>';
+		$html .= '<td colspan="3" style="' . $cell . 'font-weight:bold;font-size:14px;background:#f7f7f7;">' . esc_html__( 'User Journey', 'gf-user-journey' ) . '</td>';
 		$html .= '</tr>';
 
 		// UTM summary row (above column headers).
@@ -505,9 +505,9 @@ final class GF_User_Journey {
 
 		// Column headers.
 		$html .= '<tr style="background:#fafafa;">';
-		$html .= '<td style="' . $cell . 'font-weight:600;width:30%;">Page</td>';
-		$html .= '<td style="' . $cell . 'font-weight:600;">URL</td>';
-		$html .= '<td style="' . $cell . 'font-weight:600;width:80px;">Duration</td>';
+		$html .= '<td style="' . $cell . 'font-weight:600;width:30%;">' . esc_html__( 'Page', 'gf-user-journey' ) . '</td>';
+		$html .= '<td style="' . $cell . 'font-weight:600;">' . esc_html__( 'URL', 'gf-user-journey' ) . '</td>';
+		$html .= '<td style="' . $cell . 'font-weight:600;width:80px;">' . esc_html__( 'Duration', 'gf-user-journey' ) . '</td>';
 		$html .= '</tr>';
 
 		$total_steps = count( $journey );
@@ -554,7 +554,7 @@ final class GF_User_Journey {
 	 * @param array $utm_data UTM parameters.
 	 */
 	private function render_journey_plain_text( array $journey, array $utm_data = [] ): string {
-		$text = "--- User Journey ---\n";
+		$text = '--- ' . __( 'User Journey', 'gf-user-journey' ) . " ---\n";
 
 		if ( ! empty( $utm_data ) ) {
 			$parts = [];
