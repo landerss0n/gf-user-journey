@@ -10,6 +10,7 @@
 
 	<exclude-pattern>vendor/*</exclude-pattern>
 	<exclude-pattern>node_modules/*</exclude-pattern>
+	<exclude-pattern>includes/*</exclude-pattern>
 
 	<rule ref="WordPress-Extra">
 		<!-- Main plugin file can't follow class-* naming convention. -->

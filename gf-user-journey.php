@@ -42,6 +42,7 @@ final class GF_User_Journey {
 
 	private function __construct() {
 		add_action( 'init', [ $this, 'load_textdomain' ] );
+		add_action( 'init', [ $this, 'init_update_checker' ] );
 
 		if ( ! is_admin() ) {
 			add_action( 'wp_enqueue_scripts', [ $this, 'enqueue_tracking_script' ] );
@@ -60,6 +61,26 @@ final class GF_User_Journey {
 	 */
 	public function load_textdomain(): void {
 		load_plugin_textdomain( 'gf-user-journey', false, dirname( plugin_basename( __FILE__ ) ) . '/languages' );
+	}
+
+	/**
+	 * GitHub-based plugin update checker.
+	 */
+	public function init_update_checker(): void {
+		require_once __DIR__ . '/includes/plugin-update-checker/plugin-update-checker.php';
+
+		$update_checker = YahnisElsts\PluginUpdateChecker\v5\PucFactory::buildUpdateChecker(
+			'https://github.com/landerss0n/gf-user-journey/',
+			__FILE__,
+			'gf-user-journey'
+		);
+
+		$update_checker->setBranch( 'main' );
+		$update_checker->getVcsApi()->enableReleaseAssets();
+
+		if ( defined( 'GF_USER_JOURNEY_GITHUB_TOKEN' ) && GF_USER_JOURNEY_GITHUB_TOKEN ) {
+			$update_checker->setAuthentication( GF_USER_JOURNEY_GITHUB_TOKEN );
+		}
 	}
 
 	/**
