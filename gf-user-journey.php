@@ -6,7 +6,10 @@
  * Author:       Digiwise
  * Author URI:   https://digiwise.se/
  * Requires PHP: 7.4
+ * Requires Plugins: gravityforms
  * Requires at least: 6.3
+ * Text Domain:  gf-user-journey
+ * Domain Path:  /languages
  * License:      GPL v2 or later
  */
 
@@ -38,6 +41,8 @@ final class GF_User_Journey {
 	}
 
 	private function __construct() {
+		add_action( 'init', [ $this, 'load_textdomain' ] );
+
 		if ( ! is_admin() ) {
 			add_action( 'wp_enqueue_scripts', [ $this, 'enqueue_tracking_script' ] );
 		}
@@ -45,7 +50,16 @@ final class GF_User_Journey {
 		add_action( 'gform_entry_created', [ $this, 'capture_journey' ], 10, 2 );
 		add_filter( 'gform_entry_detail_meta_boxes', [ $this, 'register_meta_box' ], 10, 3 );
 		add_action( 'admin_enqueue_scripts', [ $this, 'enqueue_admin_styles' ] );
+		add_filter( 'gform_noconflict_styles', [ $this, 'register_noconflict_styles' ] );
 		add_filter( 'gform_notification', [ $this, 'append_journey_to_notification' ], 10, 3 );
+		add_filter( 'gform_notification_settings_fields', [ $this, 'add_notification_setting' ], 10, 3 );
+	}
+
+	/**
+	 * Load plugin textdomain for translations.
+	 */
+	public function load_textdomain(): void {
+		load_plugin_textdomain( 'gf-user-journey', false, dirname( plugin_basename( __FILE__ ) ) . '/languages' );
 	}
 
 	/**
@@ -323,17 +337,9 @@ final class GF_User_Journey {
 
 	/**
 	 * Enqueue admin CSS on the GF entry detail page.
-	 *
-	 * @param string $hook The current admin page hook.
 	 */
-	public function enqueue_admin_styles( string $hook ): void {
-		if ( 'forms_page_gf_entries' !== $hook ) {
-			return;
-		}
-
-		// Only load on the entry detail view (not the list view).
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
-		if ( empty( $_GET['lid'] ) && empty( $_GET['view'] ) ) {
+	public function enqueue_admin_styles(): void {
+		if ( ! class_exists( 'GFCommon' ) || ! GFCommon::is_entry_detail() ) {
 			return;
 		}
 
@@ -346,14 +352,64 @@ final class GF_User_Journey {
 	}
 
 	/**
-	 * Append journey data to GF notification emails.
+	 * Register our stylesheet for GF no-conflict mode.
+	 *
+	 * @param array $styles Allowed style handles.
+	 * @return array
+	 */
+	public function register_noconflict_styles( array $styles ): array {
+		$styles[] = 'gf-user-journey-admin';
+
+		return $styles;
+	}
+
+	/**
+	 * Add "Include User Journey" toggle to notification settings (GF 2.5+).
+	 *
+	 * @param array $fields       Existing settings fields.
+	 * @param array $notification The notification object.
+	 * @param array $form         The form object.
+	 * @return array
+	 */
+	public function add_notification_setting( array $fields, array $notification, array $form ): array { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed
+		$fields[] = [
+			'title'  => esc_html__( 'User Journey', 'gf-user-journey' ),
+			'fields' => [
+				[
+					'name'  => 'gf_uj_enable',
+					'type'  => 'toggle',
+					'label' => esc_html__( 'Include User Journey in this notification', 'gf-user-journey' ),
+				],
+				[
+					'name'       => 'gf_uj_bcc_only',
+					'type'       => 'toggle',
+					'label'      => esc_html__( 'Send User Journey only to BCC address', 'gf-user-journey' ),
+					'dependency' => [
+						'field'  => 'gf_uj_enable',
+						'values' => [ '1' ],
+						'live'   => true,
+					],
+				],
+			],
+		];
+
+		return $fields;
+	}
+
+	/**
+	 * Append journey data to GF notification emails (only if opt-in is enabled).
 	 *
 	 * @param array $notification The notification object.
 	 * @param array $form         The form object.
 	 * @param array $entry        The entry object.
 	 * @return array
 	 */
-	public function append_journey_to_notification( array $notification, array $form, array $entry ): array {
+	public function append_journey_to_notification( array $notification, array $form, array $entry ): array { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed
+		// Only include journey if the notification has opted in.
+		if ( empty( $notification['gf_uj_enable'] ) ) {
+			return $notification;
+		}
+
 		$journey_json = gform_get_meta( $entry['id'], self::META_KEY_JOURNEY );
 
 		if ( empty( $journey_json ) ) {
@@ -373,12 +429,33 @@ final class GF_User_Journey {
 			$utm_data = [];
 		}
 
-		$is_html = ! empty( $notification['message_format'] ) && 'html' === $notification['message_format'];
+		$journey_html = $this->render_journey_html( $journey, $utm_data );
 
-		if ( $is_html ) {
-			$notification['message'] .= $this->render_journey_html( $journey, $utm_data );
-		} else {
+		// BCC-only mode: send full notification + journey to BCC, original stays clean.
+		if ( ! empty( $notification['gf_uj_bcc_only'] ) && ! empty( $notification['bcc'] ) ) {
+			$bcc_address = $notification['bcc'];
+
+			// Process merge tags so the separate email has resolved content.
+			$subject = GFCommon::replace_variables( $notification['subject'], $form, $entry, false, false, false, 'text' );
+			$message = GFCommon::replace_variables( $notification['message'], $form, $entry, false, false, false, 'html' );
+			$message .= $journey_html;
+
+			$headers = [ 'Content-Type: text/html; charset=UTF-8' ];
+			wp_mail( $bcc_address, $subject, $message, $headers );
+
+			// Remove BCC from original so they don't get a duplicate.
+			$notification['bcc'] = '';
+
+			return $notification;
+		}
+
+		// Normal mode: append journey to notification body.
+		$is_plain = ! empty( $notification['message_format'] ) && 'text' === $notification['message_format'];
+
+		if ( $is_plain ) {
 			$notification['message'] .= "\n\n" . $this->render_journey_plain_text( $journey, $utm_data );
+		} else {
+			$notification['message'] .= $journey_html;
 		}
 
 		return $notification;
@@ -400,13 +477,8 @@ final class GF_User_Journey {
 		$html .= '<tr>';
 		$html .= '<td colspan="3" style="' . $cell . 'font-weight:bold;font-size:14px;background:#f7f7f7;">User Journey</td>';
 		$html .= '</tr>';
-		$html .= '<tr style="background:#fafafa;">';
-		$html .= '<td style="' . $cell . 'font-weight:600;width:30%;">Page</td>';
-		$html .= '<td style="' . $cell . 'font-weight:600;">URL</td>';
-		$html .= '<td style="' . $cell . 'font-weight:600;width:80px;">Duration</td>';
-		$html .= '</tr>';
 
-		// UTM summary row.
+		// UTM summary row (above column headers).
 		if ( ! empty( $utm_data ) ) {
 			$utm_labels = [
 				'utm_source'   => 'Source',
@@ -430,6 +502,13 @@ final class GF_User_Journey {
 				$html .= '</td></tr>';
 			}
 		}
+
+		// Column headers.
+		$html .= '<tr style="background:#fafafa;">';
+		$html .= '<td style="' . $cell . 'font-weight:600;width:30%;">Page</td>';
+		$html .= '<td style="' . $cell . 'font-weight:600;">URL</td>';
+		$html .= '<td style="' . $cell . 'font-weight:600;width:80px;">Duration</td>';
+		$html .= '</tr>';
 
 		$total_steps = count( $journey );
 

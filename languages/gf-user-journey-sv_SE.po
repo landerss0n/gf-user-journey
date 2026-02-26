@@ -1,0 +1,54 @@
+# Swedish translation for GF User Journey plugin.
+# Copyright (C) 2025 Digiwise
+# This file is distributed under the same license as the GF User Journey plugin.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: GF User Journey 1.0.0\n"
+"Report-Msgid-Bugs-To: https://digiwise.se/\n"
+"POT-Creation-Date: 2025-01-01 00:00+0000\n"
+"PO-Revision-Date: 2025-01-01 00:00+0000\n"
+"Last-Translator: Digiwise <info@digiwise.se>\n"
+"Language-Team: Swedish\n"
+"Language: sv_SE\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#: gf-user-journey.php
+msgid "User Journey"
+msgstr "Kundresan"
+
+#: gf-user-journey.php
+msgid "No journey data available."
+msgstr "Ingen kundresa tillgänglig."
+
+#: gf-user-journey.php
+msgid "Page"
+msgstr "Sida"
+
+#: gf-user-journey.php
+msgid "URL"
+msgstr "URL"
+
+#: gf-user-journey.php
+msgid "Time"
+msgstr "Tid"
+
+#: gf-user-journey.php
+msgid "Duration"
+msgstr "Varaktighet"
+
+#. translators: %1$d: number of steps, %2$s: total time
+#: gf-user-journey.php
+msgid "%1$d steps over %2$s"
+msgstr "%1$d steg under %2$s"
+
+#: gf-user-journey.php
+msgid "Include User Journey in this notification"
+msgstr "Inkludera kundresan i denna notifikation"
+
+#: gf-user-journey.php
+msgid "Send User Journey only to BCC address"
+msgstr "Skicka kundresan enbart till BCC-adressen"
