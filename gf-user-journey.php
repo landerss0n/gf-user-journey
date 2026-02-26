@@ -153,7 +153,7 @@ final class GF_User_Journey {
 				'expires'  => time() + YEAR_IN_SECONDS,
 				'path'     => '/',
 				'secure'   => is_ssl(),
-				'httponly' => true,
+				'httponly' => false,
 				'samesite' => 'Strict',
 			]
 		);
