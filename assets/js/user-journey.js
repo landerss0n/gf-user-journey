@@ -15,6 +15,12 @@ const GfUserJourney = ( function( document, window ) {
 			}
 
 			app.checkCleanupCookie();
+
+			// Don't track the thank-you/redirect page after cleanup.
+			if ( app.cleaned ) {
+				return;
+			}
+
 			app.captureUtm();
 			app.trackPageVisit();
 
@@ -54,6 +60,9 @@ const GfUserJourney = ( function( document, window ) {
 						document.cookie = gf_user_journey.cleanup_cookie_name +
 							'=;expires=Thu, 01 Jan 1970 00:00:01 GMT;path=/;samesite=strict' +
 							( gf_user_journey.is_ssl ? ';secure' : '' );
+
+						// Skip tracking on this page (e.g. thank you redirect).
+						app.cleaned = true;
 					}
 
 					break;
