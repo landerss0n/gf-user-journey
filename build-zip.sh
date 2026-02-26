@@ -8,6 +8,7 @@ ZIP_NAME="${PLUGIN_SLUG}-${VERSION}.zip"
 
 echo "Building ${ZIP_NAME}..."
 
+rm -f "${PLUGIN_SLUG}"-*.zip
 rm -rf "$DIST_DIR"
 mkdir -p "$DIST_DIR/$PLUGIN_SLUG/assets/js"
 mkdir -p "$DIST_DIR/$PLUGIN_SLUG/assets/css"
