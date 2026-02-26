@@ -77,10 +77,6 @@ final class GF_User_Journey {
 
 		$update_checker->setBranch( 'main' );
 		$update_checker->getVcsApi()->enableReleaseAssets();
-
-		if ( defined( 'GF_USER_JOURNEY_GITHUB_TOKEN' ) && GF_USER_JOURNEY_GITHUB_TOKEN ) {
-			$update_checker->setAuthentication( GF_USER_JOURNEY_GITHUB_TOKEN );
-		}
 	}
 
 	/**
