@@ -440,8 +440,12 @@ final class GF_User_Journey {
 			$message = GFCommon::replace_variables( $notification['message'], $form, $entry, false, false, false, 'html' );
 			$message .= $journey_html;
 
-			$headers = [ 'Content-Type: text/html; charset=UTF-8' ];
-			wp_mail( $bcc_address, $subject, $message, $headers );
+			$headers    = [ 'Content-Type: text/html; charset=UTF-8' ];
+			$recipients = array_map( 'trim', explode( ',', $bcc_address ) );
+
+			foreach ( $recipients as $recipient ) {
+				wp_mail( $recipient, $subject, $message, $headers );
+			}
 
 			// Remove BCC from original so they don't get a duplicate.
 			$notification['bcc'] = '';
