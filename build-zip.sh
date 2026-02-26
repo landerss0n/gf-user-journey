@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+cd "$(dirname "$0")"
 
 PLUGIN_SLUG="gf-user-journey"
 VERSION=$(grep "Version:" "$PLUGIN_SLUG.php" | head -1 | sed 's/.*Version:[[:space:]]*//' | sed 's/[[:space:]]*$//')

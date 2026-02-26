@@ -4,7 +4,7 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: GF User Journey 1.0.0\n"
+"Project-Id-Version: GF User Journey 1.0.1\n"
 "Report-Msgid-Bugs-To: https://digiwise.se/\n"
 "POT-Creation-Date: 2025-01-01 00:00+0000\n"
 "PO-Revision-Date: 2025-01-01 00:00+0000\n"
@@ -52,3 +52,31 @@ msgstr "Inkludera kundresan i denna notifikation"
 #: gf-user-journey.php
 msgid "Send User Journey only to BCC address"
 msgstr "Skicka kundresan enbart till BCC-adressen"
+
+#: gf-user-journey.php
+msgid "(No title)"
+msgstr "(Ingen titel)"
+
+#: gf-user-journey.php
+msgid "Traffic source:"
+msgstr "Trafikkälla:"
+
+#: gf-user-journey.php
+msgid "Source"
+msgstr "Källa"
+
+#: gf-user-journey.php
+msgid "Medium"
+msgstr "Medium"
+
+#: gf-user-journey.php
+msgid "Campaign"
+msgstr "Kampanj"
+
+#: gf-user-journey.php
+msgid "Term"
+msgstr "Sökord"
+
+#: gf-user-journey.php
+msgid "Content"
+msgstr "Innehåll"

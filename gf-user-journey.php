@@ -146,7 +146,8 @@ final class GF_User_Journey {
 
 		// Capture UTM parameters.
 		if ( ! empty( $_POST[ self::STORAGE_NAME . '_utm' ] ) ) {
-			$utm_raw  = sanitize_text_field( wp_unslash( $_POST[ self::STORAGE_NAME . '_utm' ] ) );
+			// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+			$utm_raw  = wp_unslash( $_POST[ self::STORAGE_NAME . '_utm' ] );
 			$utm_data = json_decode( $utm_raw, true );
 
 			if ( is_array( $utm_data ) ) {
@@ -224,7 +225,7 @@ final class GF_User_Journey {
 			}
 
 			$parts = explode( '|#|', $record );
-			$url   = esc_url_raw( $parts[0] );
+			$url   = esc_url_raw( $parts[0], [ 'http', 'https' ] );
 			$title = ! empty( $parts[1] ) ? sanitize_text_field( $parts[1] ) : '';
 			$ts    = absint( $timestamp );
 
@@ -281,18 +282,12 @@ final class GF_User_Journey {
 			return;
 		}
 
-		$utm_json = gform_get_meta( $entry['id'], self::META_KEY_UTM );
-		$utm_data = $utm_json ? json_decode( $utm_json, true ) : [];
-
-		$utm_labels = [
-			'utm_source'   => 'Source',
-			'utm_medium'   => 'Medium',
-			'utm_campaign' => 'Campaign',
-			'utm_term'     => 'Term',
-			'utm_content'  => 'Content',
-		];
+		$utm_json   = gform_get_meta( $entry['id'], self::META_KEY_UTM );
+		$utm_data   = $utm_json ? json_decode( $utm_json, true ) : [];
+		$utm_labels = self::get_utm_labels();
 
 		if ( ! empty( $utm_data ) && is_array( $utm_data ) ) {
+			$utm_data = array_intersect_key( $utm_data, $utm_labels );
 			echo '<div class="gf-uj-utm">';
 
 			foreach ( $utm_data as $key => $value ) {
@@ -318,7 +313,7 @@ final class GF_User_Journey {
 		$total_steps = count( $journey );
 
 		foreach ( $journey as $step ) {
-			$title    = ! empty( $step['title'] ) ? $step['title'] : '(No title)';
+			$title    = ! empty( $step['title'] ) ? $step['title'] : __( '(No title)', 'gf-user-journey' );
 			$duration = $step['duration'] > 0 ? self::human_duration( $step['duration'] ) : false;
 
 			echo '<tr>';
@@ -333,8 +328,8 @@ final class GF_User_Journey {
 
 		// Summary row.
 		if ( $total_steps > 0 ) {
-			$first_ts   = strtotime( $journey[0]['time'] );
-			$last_ts    = strtotime( $journey[ $total_steps - 1 ]['time'] );
+			$first_ts   = strtotime( $journey[0]['time'] . ' UTC' );
+			$last_ts    = strtotime( $journey[ $total_steps - 1 ]['time'] . ' UTC' );
 			$total_time = self::human_duration( max( 0, $last_ts - $first_ts ) );
 
 			echo '<tfoot><tr>';
@@ -497,13 +492,8 @@ final class GF_User_Journey {
 
 		// UTM summary row (above column headers).
 		if ( ! empty( $utm_data ) ) {
-			$utm_labels = [
-				'utm_source'   => 'Source',
-				'utm_medium'   => 'Medium',
-				'utm_campaign' => 'Campaign',
-				'utm_term'     => 'Term',
-				'utm_content'  => 'Content',
-			];
+			$utm_labels = self::get_utm_labels();
+			$utm_data   = array_intersect_key( $utm_data, $utm_labels );
 			$utm_parts  = [];
 
 			foreach ( $utm_data as $key => $value ) {
@@ -530,7 +520,7 @@ final class GF_User_Journey {
 		$total_steps = count( $journey );
 
 		foreach ( $journey as $i => $step ) {
-			$title    = ! empty( $step['title'] ) ? esc_html( $step['title'] ) : '(No title)';
+			$title    = ! empty( $step['title'] ) ? esc_html( $step['title'] ) : esc_html__( '(No title)', 'gf-user-journey' );
 			$url      = esc_html( $step['url'] );
 			$duration = $step['duration'] > 0 ? esc_html( self::human_duration( $step['duration'] ) ) : '&mdash;';
 			$bg       = ( 0 === $i % 2 ) ? '#ffffff' : '#f9f9f9';
@@ -544,8 +534,8 @@ final class GF_User_Journey {
 
 		// Summary row.
 		if ( $total_steps > 0 ) {
-			$first_ts   = strtotime( $journey[0]['time'] );
-			$last_ts    = strtotime( $journey[ $total_steps - 1 ]['time'] );
+			$first_ts   = strtotime( $journey[0]['time'] . ' UTC' );
+			$last_ts    = strtotime( $journey[ $total_steps - 1 ]['time'] . ' UTC' );
 			$total_time = self::human_duration( max( 0, $last_ts - $first_ts ) );
 
 			$html .= '<tr style="background:#f0f7ff;">';
@@ -574,17 +564,21 @@ final class GF_User_Journey {
 		$text = '--- ' . __( 'User Journey', 'gf-user-journey' ) . " ---\n";
 
 		if ( ! empty( $utm_data ) ) {
-			$parts = [];
+			$utm_labels = self::get_utm_labels();
+			$utm_data   = array_intersect_key( $utm_data, $utm_labels );
+			$parts      = [];
 
 			foreach ( $utm_data as $key => $value ) {
-				$parts[] = str_replace( 'utm_', '', $key ) . ': ' . $value;
+				if ( isset( $utm_labels[ $key ] ) ) {
+					$parts[] = $utm_labels[ $key ] . ': ' . $value;
+				}
 			}
 
-			$text .= 'Traffic source: ' . implode( ' | ', $parts ) . "\n\n";
+			$text .= __( 'Traffic source:', 'gf-user-journey' ) . ' ' . implode( ' | ', $parts ) . "\n\n";
 		}
 
 		foreach ( $journey as $step ) {
-			$title    = ! empty( $step['title'] ) ? $step['title'] : '(No title)';
+			$title    = ! empty( $step['title'] ) ? $step['title'] : __( '(No title)', 'gf-user-journey' );
 			$duration = $step['duration'] > 0 ? ' (' . self::human_duration( $step['duration'] ) . ')' : '';
 			$text    .= "- {$title} - {$step['url']}{$duration}\n";
 		}
@@ -592,13 +586,31 @@ final class GF_User_Journey {
 		$total_steps = count( $journey );
 
 		if ( $total_steps > 0 ) {
-			$first_ts   = strtotime( $journey[0]['time'] );
-			$last_ts    = strtotime( $journey[ $total_steps - 1 ]['time'] );
+			$first_ts   = strtotime( $journey[0]['time'] . ' UTC' );
+			$last_ts    = strtotime( $journey[ $total_steps - 1 ]['time'] . ' UTC' );
 			$total_time = self::human_duration( max( 0, $last_ts - $first_ts ) );
-			$text      .= "\n{$total_steps} steps over {$total_time}\n";
+			$text      .= "\n" . sprintf(
+				/* translators: %1$d: number of steps, %2$s: total time */
+				__( '%1$d steps over %2$s', 'gf-user-journey' ),
+				$total_steps,
+				$total_time
+			) . "\n";
 		}
 
 		return $text;
+	}
+
+	/**
+	 * Get UTM parameter labels.
+	 */
+	private static function get_utm_labels(): array {
+		return [
+			'utm_source'   => __( 'Source', 'gf-user-journey' ),
+			'utm_medium'   => __( 'Medium', 'gf-user-journey' ),
+			'utm_campaign' => __( 'Campaign', 'gf-user-journey' ),
+			'utm_term'     => __( 'Term', 'gf-user-journey' ),
+			'utm_content'  => __( 'Content', 'gf-user-journey' ),
+		];
 	}
 
 	/**

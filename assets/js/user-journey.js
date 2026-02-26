@@ -7,6 +7,13 @@
 const GfUserJourney = ( function( document, window ) {
 	const app = {
 		init() {
+			// Bail if localStorage is not available (private browsing, disabled storage).
+			try {
+				localStorage.getItem( '__gf_uj_test' );
+			} catch {
+				return;
+			}
+
 			app.checkCleanupCookie();
 			app.captureUtm();
 			app.trackPageVisit();
