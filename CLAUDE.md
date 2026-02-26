@@ -14,6 +14,9 @@ gf-user-journey/
 │   └── user-journey.min.js      # Genererad (redigera ALDRIG)
 ├── assets/css/
 │   └── entry-detail.css         # Admin meta box styling
+├── languages/
+│   ├── gf-user-journey-sv_SE.po # Svenska översättningar (redigera denna)
+│   └── gf-user-journey-sv_SE.mo # Kompilerad (generera via msgfmt)
 ├── package.json                 # npm scripts: lint, build, dev
 ├── composer.json                # PHPCS via Composer
 ├── eslint.config.mjs            # ESLint v9 flat config
