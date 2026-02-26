@@ -1,6 +1,6 @@
 {
   "name": "gf-user-journey",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "description": "Build tools for GF User Journey plugin",
   "scripts": {
