@@ -19,6 +19,7 @@ cp assets/js/user-journey.js "$DIST_DIR/$PLUGIN_SLUG/assets/js/"
 cp assets/js/user-journey.min.js "$DIST_DIR/$PLUGIN_SLUG/assets/js/"
 cp assets/css/entry-detail.css "$DIST_DIR/$PLUGIN_SLUG/assets/css/"
 cp -r languages/ "$DIST_DIR/$PLUGIN_SLUG/languages/"
+cp -r includes/ "$DIST_DIR/$PLUGIN_SLUG/includes/"
 
 # Create zip
 cd "$DIST_DIR"
