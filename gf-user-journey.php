@@ -2,7 +2,7 @@
 /**
  * Plugin Name:  GF User Journey
  * Description:  Tracks visitor navigation and appends the full user journey to Gravity Forms notification emails and entry details.
- * Version:      1.0.2
+ * Version:      1.0.3
  * Author:       Digiwise
  * Author URI:   https://digiwise.se/
  * Requires PHP: 7.4
@@ -19,7 +19,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 final class GF_User_Journey {
 
-	const VERSION             = '1.0.2';
+	const VERSION             = '1.0.3';
 	const STORAGE_NAME        = '_gf_uj';
 	const CLEANUP_COOKIE_NAME = '_gf_uj_cleanup';
 	const META_KEY_JOURNEY    = '_gf_uj_journey';
