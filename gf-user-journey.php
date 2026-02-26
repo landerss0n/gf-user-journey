@@ -1,0 +1,537 @@
+<?php
+/**
+ * Plugin Name:  GF User Journey
+ * Description:  Tracks visitor navigation and appends the full user journey to Gravity Forms notification emails and entry details.
+ * Version:      1.0.0
+ * Author:       Digiwise
+ * Author URI:   https://digiwise.se/
+ * Requires PHP: 7.4
+ * Requires at least: 6.3
+ * License:      GPL v2 or later
+ */
+
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
+final class GF_User_Journey {
+
+	const VERSION             = '1.0.0';
+	const STORAGE_NAME        = '_gf_uj';
+	const CLEANUP_COOKIE_NAME = '_gf_uj_cleanup';
+	const META_KEY_JOURNEY    = '_gf_uj_journey';
+	const META_KEY_UTM        = '_gf_uj_utm';
+	const MAX_DATA_ITEMS      = 100;
+	const MAX_DATA_SIZE       = 10240; // 10 KB
+
+	/**
+	 * Singleton instance.
+	 */
+	private static $instance = null;
+
+	public static function get_instance(): self {
+		if ( null === self::$instance ) {
+			self::$instance = new self();
+		}
+
+		return self::$instance;
+	}
+
+	private function __construct() {
+		if ( ! is_admin() ) {
+			add_action( 'wp_enqueue_scripts', [ $this, 'enqueue_tracking_script' ] );
+		}
+
+		add_action( 'gform_entry_created', [ $this, 'capture_journey' ], 10, 2 );
+		add_filter( 'gform_entry_detail_meta_boxes', [ $this, 'register_meta_box' ], 10, 3 );
+		add_action( 'admin_enqueue_scripts', [ $this, 'enqueue_admin_styles' ] );
+		add_filter( 'gform_notification', [ $this, 'append_journey_to_notification' ], 10, 3 );
+	}
+
+	/**
+	 * Enqueue the tracking script on every frontend page.
+	 */
+	public function enqueue_tracking_script(): void {
+		$min = defined( 'SCRIPT_DEBUG' ) && SCRIPT_DEBUG ? '' : '.min';
+
+		wp_enqueue_script(
+			'gf-user-journey',
+			plugin_dir_url( __FILE__ ) . "assets/js/user-journey{$min}.js",
+			[],
+			self::VERSION,
+			[ 'strategy' => 'defer' ]
+		);
+
+		wp_localize_script(
+			'gf-user-journey',
+			'gf_user_journey',
+			[
+				'storage_name'        => self::STORAGE_NAME,
+				'cleanup_cookie_name' => self::CLEANUP_COOKIE_NAME,
+				'is_ssl'              => is_ssl(),
+				'max_items'           => self::MAX_DATA_ITEMS,
+				'max_size'            => self::MAX_DATA_SIZE,
+				'nonce'               => wp_create_nonce( 'gf_user_journey' ),
+			]
+		);
+	}
+
+	/**
+	 * Capture journey data when a Gravity Forms entry is created.
+	 *
+	 * @param array $entry The entry object.
+	 * @param array $form  The form object.
+	 */
+	public function capture_journey( array $entry, array $form ): void { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed
+		if ( empty( $_POST[ self::STORAGE_NAME ] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Missing
+			return;
+		}
+
+		// Verify nonce.
+		if ( ! isset( $_POST[ self::STORAGE_NAME . '_nonce' ] )
+			|| ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST[ self::STORAGE_NAME . '_nonce' ] ) ), 'gf_user_journey' )
+		) {
+			return;
+		}
+
+		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+		$raw  = wp_unslash( $_POST[ self::STORAGE_NAME ] );
+		$data = json_decode( $raw, true );
+
+		if ( ! is_array( $data ) ) {
+			return;
+		}
+
+		$data    = array_map( 'urldecode', $data );
+		$data    = $this->sanitize_and_limit( $data );
+		$journey = $this->parse_journey( $data );
+
+		if ( empty( $journey ) ) {
+			return;
+		}
+
+		// Save journey as entry meta.
+		gform_update_meta( $entry['id'], self::META_KEY_JOURNEY, wp_json_encode( $journey ) );
+
+		// Capture UTM parameters.
+		if ( ! empty( $_POST[ self::STORAGE_NAME . '_utm' ] ) ) {
+			$utm_raw  = sanitize_text_field( wp_unslash( $_POST[ self::STORAGE_NAME . '_utm' ] ) );
+			$utm_data = json_decode( $utm_raw, true );
+
+			if ( is_array( $utm_data ) ) {
+				$allowed  = [ 'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content' ];
+				$utm_data = array_intersect_key(
+					array_map( 'sanitize_text_field', $utm_data ),
+					array_flip( $allowed )
+				);
+
+				if ( ! empty( $utm_data ) ) {
+					gform_update_meta( $entry['id'], self::META_KEY_UTM, wp_json_encode( $utm_data ) );
+				}
+			}
+		}
+
+		// Set cleanup cookie so JS clears localStorage on next page load.
+		setcookie(
+			self::CLEANUP_COOKIE_NAME,
+			'1',
+			[
+				'expires'  => time() + YEAR_IN_SECONDS,
+				'path'     => '/',
+				'secure'   => is_ssl(),
+				'httponly' => true,
+				'samesite' => 'Strict',
+			]
+		);
+	}
+
+	/**
+	 * Server-side validation and size limiting (don't trust client data).
+	 */
+	private function sanitize_and_limit( array $data ): array {
+		krsort( $data );
+
+		$cutoff    = time() - YEAR_IN_SECONDS;
+		$last_data = [];
+		$total     = 2; // JSON outer braces.
+
+		foreach ( $data as $key => $value ) {
+			if ( (int) $key < $cutoff ) {
+				break;
+			}
+
+			if ( count( $last_data ) >= self::MAX_DATA_ITEMS ) {
+				break;
+			}
+
+			$pair_size = strlen( (string) $key ) + strlen( (string) $value ) + 6;
+
+			if ( $total + $pair_size > self::MAX_DATA_SIZE ) {
+				break;
+			}
+
+			$total += $pair_size;
+
+			$last_data[ $key ] = $value;
+		}
+
+		ksort( $last_data );
+
+		return $last_data;
+	}
+
+	/**
+	 * Parse raw journey entries into structured step data.
+	 */
+	private function parse_journey( array $data ): array {
+		$journey = [];
+		$prev_ts = 0;
+
+		foreach ( $data as $timestamp => $record ) {
+			if ( empty( $record ) || strpos( $record, '|#|' ) === false ) {
+				continue;
+			}
+
+			$parts = explode( '|#|', $record );
+			$url   = esc_url_raw( $parts[0] );
+			$title = ! empty( $parts[1] ) ? sanitize_text_field( $parts[1] ) : '';
+			$ts    = absint( $timestamp );
+
+			$journey[] = [
+				'url'      => $url,
+				'title'    => $title,
+				'time'     => gmdate( 'Y-m-d H:i:s', $ts ),
+				'duration' => $prev_ts > 0 ? $ts - $prev_ts : 0,
+			];
+
+			$prev_ts = $ts;
+		}
+
+		return $journey;
+	}
+
+	/**
+	 * Register a meta box on the GF entry detail page.
+	 *
+	 * @param array $meta_boxes Existing meta boxes.
+	 * @param array $entry      The entry object.
+	 * @param array $form       The form object.
+	 * @return array
+	 */
+	public function register_meta_box( array $meta_boxes, array $entry, array $form ): array { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed
+		$journey_json = gform_get_meta( $entry['id'], self::META_KEY_JOURNEY );
+
+		if ( empty( $journey_json ) ) {
+			return $meta_boxes;
+		}
+
+		$meta_boxes['gf_user_journey'] = [
+			'title'    => esc_html__( 'User Journey', 'gf-user-journey' ),
+			'callback' => [ $this, 'render_meta_box' ],
+			'context'  => 'normal',
+		];
+
+		return $meta_boxes;
+	}
+
+	/**
+	 * Render the meta box content on the entry detail page.
+	 *
+	 * @param array $args Meta box arguments containing 'entry' and 'form'.
+	 */
+	public function render_meta_box( array $args ): void {
+		$entry = $args['entry'];
+
+		$journey_json = gform_get_meta( $entry['id'], self::META_KEY_JOURNEY );
+		$journey      = json_decode( $journey_json, true );
+
+		if ( ! is_array( $journey ) || empty( $journey ) ) {
+			echo '<p>' . esc_html__( 'No journey data available.', 'gf-user-journey' ) . '</p>';
+			return;
+		}
+
+		$utm_json = gform_get_meta( $entry['id'], self::META_KEY_UTM );
+		$utm_data = $utm_json ? json_decode( $utm_json, true ) : [];
+
+		$utm_labels = [
+			'utm_source'   => 'Source',
+			'utm_medium'   => 'Medium',
+			'utm_campaign' => 'Campaign',
+			'utm_term'     => 'Term',
+			'utm_content'  => 'Content',
+		];
+
+		if ( ! empty( $utm_data ) && is_array( $utm_data ) ) {
+			echo '<div class="gf-uj-utm">';
+
+			foreach ( $utm_data as $key => $value ) {
+				if ( isset( $utm_labels[ $key ] ) ) {
+					echo '<span class="gf-uj-utm-tag">';
+					echo '<strong>' . esc_html( $utm_labels[ $key ] ) . ':</strong> ' . esc_html( $value );
+					echo '</span>';
+				}
+			}
+
+			echo '</div>';
+		}
+
+		echo '<table class="gf-uj-table">';
+		echo '<thead><tr>';
+		echo '<th>' . esc_html__( 'Page', 'gf-user-journey' ) . '</th>';
+		echo '<th>' . esc_html__( 'URL', 'gf-user-journey' ) . '</th>';
+		echo '<th>' . esc_html__( 'Time', 'gf-user-journey' ) . '</th>';
+		echo '<th>' . esc_html__( 'Duration', 'gf-user-journey' ) . '</th>';
+		echo '</tr></thead>';
+		echo '<tbody>';
+
+		$total_steps = count( $journey );
+
+		foreach ( $journey as $step ) {
+			$title    = ! empty( $step['title'] ) ? $step['title'] : '(No title)';
+			$duration = $step['duration'] > 0 ? self::human_duration( $step['duration'] ) : false;
+
+			echo '<tr>';
+			echo '<td>' . esc_html( $title ) . '</td>';
+			echo '<td class="gf-uj-url">' . esc_html( $step['url'] ) . '</td>';
+			echo '<td>' . esc_html( $step['time'] ) . '</td>';
+			echo '<td>' . ( $duration ? esc_html( $duration ) : '&mdash;' ) . '</td>';
+			echo '</tr>';
+		}
+
+		echo '</tbody>';
+
+		// Summary row.
+		if ( $total_steps > 0 ) {
+			$first_ts   = strtotime( $journey[0]['time'] );
+			$last_ts    = strtotime( $journey[ $total_steps - 1 ]['time'] );
+			$total_time = self::human_duration( max( 0, $last_ts - $first_ts ) );
+
+			echo '<tfoot><tr>';
+			echo '<td colspan="4">';
+			printf(
+				/* translators: %1$d: number of steps, %2$s: total time */
+				esc_html__( '%1$d steps over %2$s', 'gf-user-journey' ),
+				absint( $total_steps ),
+				esc_html( $total_time )
+			);
+			echo '</td>';
+			echo '</tr></tfoot>';
+		}
+
+		echo '</table>';
+	}
+
+	/**
+	 * Enqueue admin CSS on the GF entry detail page.
+	 *
+	 * @param string $hook The current admin page hook.
+	 */
+	public function enqueue_admin_styles( string $hook ): void {
+		if ( 'forms_page_gf_entries' !== $hook ) {
+			return;
+		}
+
+		// Only load on the entry detail view (not the list view).
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		if ( empty( $_GET['lid'] ) && empty( $_GET['view'] ) ) {
+			return;
+		}
+
+		wp_enqueue_style(
+			'gf-user-journey-admin',
+			plugin_dir_url( __FILE__ ) . 'assets/css/entry-detail.css',
+			[],
+			self::VERSION
+		);
+	}
+
+	/**
+	 * Append journey data to GF notification emails.
+	 *
+	 * @param array $notification The notification object.
+	 * @param array $form         The form object.
+	 * @param array $entry        The entry object.
+	 * @return array
+	 */
+	public function append_journey_to_notification( array $notification, array $form, array $entry ): array {
+		$journey_json = gform_get_meta( $entry['id'], self::META_KEY_JOURNEY );
+
+		if ( empty( $journey_json ) ) {
+			return $notification;
+		}
+
+		$journey = json_decode( $journey_json, true );
+
+		if ( ! is_array( $journey ) || empty( $journey ) ) {
+			return $notification;
+		}
+
+		$utm_json = gform_get_meta( $entry['id'], self::META_KEY_UTM );
+		$utm_data = $utm_json ? json_decode( $utm_json, true ) : [];
+
+		if ( ! is_array( $utm_data ) ) {
+			$utm_data = [];
+		}
+
+		$is_html = ! empty( $notification['message_format'] ) && 'html' === $notification['message_format'];
+
+		if ( $is_html ) {
+			$notification['message'] .= $this->render_journey_html( $journey, $utm_data );
+		} else {
+			$notification['message'] .= "\n\n" . $this->render_journey_plain_text( $journey, $utm_data );
+		}
+
+		return $notification;
+	}
+
+	/**
+	 * Render the journey as an HTML table for HTML emails.
+	 *
+	 * @param array $journey  Parsed journey steps.
+	 * @param array $utm_data UTM parameters.
+	 */
+	private function render_journey_html( array $journey, array $utm_data = [] ): string {
+		$cell = 'border-right:1px solid #ddd;border-bottom:1px solid #ddd;padding:8px;';
+
+		$html  = '<br><br>';
+		$html .= '<table width="100%" cellspacing="0" cellpadding="0" style="border-top:1px solid #ddd;border-left:1px solid #ddd;border-collapse:collapse;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,sans-serif;font-size:13px;">';
+
+		// Header.
+		$html .= '<tr>';
+		$html .= '<td colspan="3" style="' . $cell . 'font-weight:bold;font-size:14px;background:#f7f7f7;">User Journey</td>';
+		$html .= '</tr>';
+		$html .= '<tr style="background:#fafafa;">';
+		$html .= '<td style="' . $cell . 'font-weight:600;width:30%;">Page</td>';
+		$html .= '<td style="' . $cell . 'font-weight:600;">URL</td>';
+		$html .= '<td style="' . $cell . 'font-weight:600;width:80px;">Duration</td>';
+		$html .= '</tr>';
+
+		// UTM summary row.
+		if ( ! empty( $utm_data ) ) {
+			$utm_labels = [
+				'utm_source'   => 'Source',
+				'utm_medium'   => 'Medium',
+				'utm_campaign' => 'Campaign',
+				'utm_term'     => 'Term',
+				'utm_content'  => 'Content',
+			];
+			$utm_parts  = [];
+
+			foreach ( $utm_data as $key => $value ) {
+				if ( isset( $utm_labels[ $key ] ) ) {
+					$utm_parts[] = '<strong>' . esc_html( $utm_labels[ $key ] ) . ':</strong> ' . esc_html( $value );
+				}
+			}
+
+			if ( ! empty( $utm_parts ) ) {
+				$html .= '<tr style="background:#fff8e1;">';
+				$html .= '<td colspan="3" style="' . $cell . 'font-size:12px;">';
+				$html .= implode( ' &nbsp;|&nbsp; ', $utm_parts );
+				$html .= '</td></tr>';
+			}
+		}
+
+		$total_steps = count( $journey );
+
+		foreach ( $journey as $i => $step ) {
+			$title    = ! empty( $step['title'] ) ? esc_html( $step['title'] ) : '(No title)';
+			$url      = esc_html( $step['url'] );
+			$duration = $step['duration'] > 0 ? esc_html( self::human_duration( $step['duration'] ) ) : '&mdash;';
+			$bg       = ( 0 === $i % 2 ) ? '#ffffff' : '#f9f9f9';
+
+			$html .= "<tr style=\"background:{$bg};\">";
+			$html .= "<td style=\"{$cell}\">{$title}</td>";
+			$html .= "<td style=\"{$cell}color:#666;word-break:break-all;\">{$url}</td>";
+			$html .= "<td style=\"{$cell}\">{$duration}</td>";
+			$html .= '</tr>';
+		}
+
+		// Summary row.
+		if ( $total_steps > 0 ) {
+			$first_ts   = strtotime( $journey[0]['time'] );
+			$last_ts    = strtotime( $journey[ $total_steps - 1 ]['time'] );
+			$total_time = self::human_duration( max( 0, $last_ts - $first_ts ) );
+
+			$html .= '<tr style="background:#f0f7ff;">';
+			$html .= '<td colspan="3" style="' . $cell . 'font-weight:600;">';
+			$html .= sprintf(
+				/* translators: %1$d: number of steps, %2$s: total time */
+				esc_html__( '%1$d steps over %2$s', 'gf-user-journey' ),
+				$total_steps,
+				esc_html( $total_time )
+			);
+			$html .= '</td></tr>';
+		}
+
+		$html .= '</table>';
+
+		return $html;
+	}
+
+	/**
+	 * Render the journey as plain text for non-HTML emails.
+	 *
+	 * @param array $journey  Parsed journey steps.
+	 * @param array $utm_data UTM parameters.
+	 */
+	private function render_journey_plain_text( array $journey, array $utm_data = [] ): string {
+		$text = "--- User Journey ---\n";
+
+		if ( ! empty( $utm_data ) ) {
+			$parts = [];
+
+			foreach ( $utm_data as $key => $value ) {
+				$parts[] = str_replace( 'utm_', '', $key ) . ': ' . $value;
+			}
+
+			$text .= 'Traffic source: ' . implode( ' | ', $parts ) . "\n\n";
+		}
+
+		foreach ( $journey as $step ) {
+			$title    = ! empty( $step['title'] ) ? $step['title'] : '(No title)';
+			$duration = $step['duration'] > 0 ? ' (' . self::human_duration( $step['duration'] ) . ')' : '';
+			$text    .= "- {$title} - {$step['url']}{$duration}\n";
+		}
+
+		$total_steps = count( $journey );
+
+		if ( $total_steps > 0 ) {
+			$first_ts   = strtotime( $journey[0]['time'] );
+			$last_ts    = strtotime( $journey[ $total_steps - 1 ]['time'] );
+			$total_time = self::human_duration( max( 0, $last_ts - $first_ts ) );
+			$text      .= "\n{$total_steps} steps over {$total_time}\n";
+		}
+
+		return $text;
+	}
+
+	/**
+	 * Convert seconds to a human-readable duration string.
+	 */
+	private static function human_duration( int $seconds ): string {
+		if ( $seconds < 60 ) {
+			return $seconds . 's';
+		}
+
+		$minutes = (int) floor( $seconds / 60 );
+		$secs    = $seconds % 60;
+
+		if ( $minutes < 60 ) {
+			return $secs > 0 ? "{$minutes}m {$secs}s" : "{$minutes}m";
+		}
+
+		$hours = (int) floor( $minutes / 60 );
+		$mins  = $minutes % 60;
+
+		if ( $hours < 24 ) {
+			return $mins > 0 ? "{$hours}h {$mins}m" : "{$hours}h";
+		}
+
+		$days = (int) floor( $hours / 24 );
+		$hrs  = $hours % 24;
+
+		return $hrs > 0 ? "{$days}d {$hrs}h" : "{$days}d";
+	}
+}
+
+GF_User_Journey::get_instance();

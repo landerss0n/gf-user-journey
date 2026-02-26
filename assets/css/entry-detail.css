@@ -1,0 +1,57 @@
+/**
+ * GF User Journey - Entry detail meta box styles.
+ */
+
+.gf-uj-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 13px;
+	line-height: 1.4;
+}
+
+.gf-uj-table th,
+.gf-uj-table td {
+	padding: 8px 10px;
+	border: 1px solid #e1e1e1;
+	text-align: left;
+	vertical-align: top;
+}
+
+.gf-uj-table thead th {
+	background: #f7f7f7;
+	font-weight: 600;
+}
+
+.gf-uj-table tbody tr:nth-child(even) {
+	background: #fafafa;
+}
+
+.gf-uj-table tbody tr:hover {
+	background: #f0f7ff;
+}
+
+.gf-uj-table .gf-uj-url {
+	color: #666;
+	word-break: break-all;
+	font-size: 12px;
+}
+
+.gf-uj-table tfoot td {
+	background: #f0f7ff;
+	font-weight: 600;
+}
+
+.gf-uj-utm {
+	margin-bottom: 12px;
+	padding: 8px 12px;
+	background: #fff8e1;
+	border: 1px solid #ffe082;
+	border-radius: 4px;
+	font-size: 12px;
+	line-height: 1.6;
+}
+
+.gf-uj-utm-tag {
+	display: inline-block;
+	margin-right: 12px;
+}

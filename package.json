@@ -1,0 +1,21 @@
+{
+  "name": "gf-user-journey",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Build tools for GF User Journey plugin",
+  "scripts": {
+    "lint": "eslint assets/js/user-journey.js",
+    "lint:fix": "eslint assets/js/user-journey.js --fix",
+    "build": "npx terser assets/js/user-journey.js -o assets/js/user-journey.min.js -c -m",
+    "dev": "npm run lint && npm run build",
+    "phpcs": "vendor/bin/phpcs",
+    "phpcbf": "vendor/bin/phpcbf",
+    "package": "npm run dev && bash build-zip.sh"
+  },
+  "devDependencies": {
+    "eslint": "^9.0.0",
+    "@eslint/js": "^9.0.0",
+    "globals": "^15.0.0",
+    "terser": "^5.0.0"
+  }
+}
