@@ -431,21 +431,23 @@ final class GF_User_Journey {
 
 		$journey_html = $this->render_journey_html( $journey, $utm_data );
 
-		// BCC-only mode: send full notification + journey to BCC, original stays clean.
+		// BCC-only mode: send separate email with journey to BCC addresses only.
 		if ( ! empty( $notification['gf_uj_bcc_only'] ) && ! empty( $notification['bcc'] ) ) {
 			$bcc_address = $notification['bcc'];
 
-			// Process merge tags so the separate email has resolved content.
-			$subject = GFCommon::replace_variables( $notification['subject'], $form, $entry, false, false, false, 'text' );
-			$message = GFCommon::replace_variables( $notification['message'], $form, $entry, false, false, false, 'html' );
-			$message .= $journey_html;
+			$subject    = GFCommon::replace_variables( $notification['subject'], $form, $entry, false, false, false, 'text' );
+			$message    = GFCommon::replace_variables( $notification['message'], $form, $entry, false, false, false, 'html' );
+			$message   .= $journey_html;
+			$from_name  = GFCommon::replace_variables( $notification['fromName'], $form, $entry, false, false, false, 'text' );
+			$from_email = GFCommon::replace_variables( $notification['from'], $form, $entry, false, false, false, 'text' );
 
-			$headers    = [ 'Content-Type: text/html; charset=UTF-8' ];
-			$recipients = array_map( 'trim', explode( ',', $bcc_address ) );
+			$headers = [
+				'Content-Type: text/html; charset=UTF-8',
+				'From: ' . $from_name . ' <' . $from_email . '>',
+				'Bcc: ' . $bcc_address,
+			];
 
-			foreach ( $recipients as $recipient ) {
-				wp_mail( $recipient, $subject, $message, $headers );
-			}
+			wp_mail( $from_email, $subject, $message, $headers );
 
 			// Remove BCC from original so they don't get a duplicate.
 			$notification['bcc'] = '';
